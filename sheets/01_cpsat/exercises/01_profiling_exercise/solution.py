@@ -35,26 +35,11 @@ def build_weighted_graph(instance: ProblemInstance) -> nx.Graph:
         len(instance.connections),
     )
     G = nx.Graph()
-
-    # Add all endpoints as nodes in the graph
-    for vertex in instance.endpoints:
-        G.add_node(vertex)
-
-    # Add edges with weights to the graph
-    for v in instance.endpoints:
-        for w in instance.endpoints:
-            if v != w:  # Ensure not to check the same node
-                # Check if there is an edge between v and w
-                if any(
-                    edge.endpoint_a == v and edge.endpoint_b == w
-                    for edge in instance.connections
-                ) or any(
-                    edge.endpoint_a == w and edge.endpoint_b == v
-                    for edge in instance.connections
-                ):
-                    # Get the weight of the edge and add it to the graph
-                    weight = get_edge_weight(instance, v, w)
-                    G.add_edge(v, w, weight=weight)
+    
+    # connections already store distance of edge
+    # nodes are automatically added if not already present
+    # if edge exists its only updated
+    G.add_weighted_edges_from((edge.endpoint_a, edge.endpoint_b, edge.distance) for edge in instance.connections)
 
     return G
 
@@ -82,6 +67,16 @@ class MaxPlacementsSolver:
             for endpoint in instance.approved_endpoints
         }
 
+        # compute graph only once
+        graph = build_weighted_graph(instance)
+
+        # precompute the shortest paths in a dictionary for fast lookup
+        # start node is u
+        # end node and length is a tuple (v, d) computed with nx.shortest_path_length()
+        self.shortest_paths = {
+            u: nx.shortest_path_length(graph, u, weight="weight") for u in instance.approved_endpoints
+        }
+
         # Add constraints and objective to the model
         self._add_distance_constraints()
         self._set_objective()
@@ -90,14 +85,10 @@ class MaxPlacementsSolver:
     def _add_distance_constraints(self):
         """Add constraints to ensure selected endpoints are not too close."""
         logging.info("Adding distance constraints")
-        for endpoint1, endpoint2 in itertools.combinations(
-            self.instance.approved_endpoints, 2
-        ):
-            if (
-                distance(self.instance, endpoint1, endpoint2)
-                < self.instance.min_distance_between_placements
-            ):
-                self.model.Add(self.vars[endpoint1] + self.vars[endpoint2] <= 1)
+        for u, v in itertools.combinations(self.instance.approved_endpoints, 2):
+            distance = self.shortest_paths[u][v]
+            if distance < self.instance.min_distance_between_placements:
+                self.model.Add(self.vars[u] + self.vars[v] <= 1)
 
     def _set_objective(self):
         """Set the objective to maximize the number of selected endpoints."""
