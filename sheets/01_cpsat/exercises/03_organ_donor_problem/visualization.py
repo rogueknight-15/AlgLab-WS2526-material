@@ -127,7 +127,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # sqlite database
-    db: TransplantDatabase = SqliteTransplantDatabase("./instances/20.db")
+    db: TransplantDatabase = SqliteTransplantDatabase("./instances/100.db")
 
     # create solver based on arguments
     if args.basic:

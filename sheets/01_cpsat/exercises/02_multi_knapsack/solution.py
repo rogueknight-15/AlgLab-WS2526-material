@@ -1,7 +1,6 @@
 import math
-from typing import List
 
-from data_schema import Instance, Item, Solution
+from data_schema import Instance, Solution
 from ortools.sat.python.cp_model import FEASIBLE, OPTIMAL, CpModel, CpSolver
 
 
@@ -31,9 +30,10 @@ class MultiKnapsackSolver:
         self.model = CpModel()
         self.solver = CpSolver()
         self.solver.parameters.log_search_progress = True
-        # TODO: Implement me!
 
-
+        # precompute values and items for easier access
+        self.values = [item.value for item in self.items]
+        self.weights = [item.weight for item in self.items]
 
     def solve(self, timelimit: float = math.inf) -> Solution:
         """
@@ -50,5 +50,47 @@ class MultiKnapsackSolver:
             return Solution(trucks=[])  # empty solution
         if timelimit < math.inf:
             self.solver.parameters.max_time_in_seconds = timelimit
-        # TODO: Implement me!
-        return Solution(trucks=[])  # empty solution
+
+        # decision variable x for each item i and truck j
+        x = {
+            (i, j): self.model.new_bool_var(f"x_{i}_{j}") for i in range(len(self.items)) for j in range(len(self.capacities))
+        }
+
+        # decision variable y for each truck j. 
+        # marks if a truck has a toxic item
+        y = {
+            j: self.model.new_bool_var(f"y_{j}") for j in range(len(self.capacities)) 
+        }
+
+        # for all trucks j the sum of weights cannot exceed the trucks capacity
+        for j in range(len(self.capacities)):
+            self.model.add(sum(self.weights[i] * x[i, j] for i in range(len(self.items)))<= self.capacities[j])
+
+        # for each item i there can only be at most one of it in a truck
+        for i in range(len(self.items)):
+            self.model.add(sum(x[i, j] for j in range(len(self.capacities))) <= 1)
+
+        # only add these constraints if toxic flag is set
+        if self.activate_toxic:
+            for i in range(len(self.items)):
+                for j in range(len(self.capacities)):
+                    if self.items[i].toxic: # toxic item selected means truck must also be marked as toxic 
+                        self.model.add_implication(x[i, j], y[j])
+                    else: # if truck has a toxic item non toxic items cannot be selected
+                        self.model.add_implication(y[j], ~x[i, j])
+
+        # maximize the sum of packed items values per truck
+        self.model.maximize(sum(self.values[i] * x[i, j] for i in range(len(self.items)) for j in range(len(self.capacities))))
+
+        status = self.solver.solve(self.model)
+
+        assert status in [OPTIMAL, FEASIBLE]
+
+        trucks = []
+        for j in range(len(self.capacities)):  # for each truck
+            trucks.append([])
+            for i in range(len(self.items)):  # for each item
+                if (self.solver.value(x[i, j]) == 1):  # if item is packed add it to the trucks knapsack
+                    trucks[j].append(self.items[i])
+
+        return Solution(trucks=trucks)  # empty solution
