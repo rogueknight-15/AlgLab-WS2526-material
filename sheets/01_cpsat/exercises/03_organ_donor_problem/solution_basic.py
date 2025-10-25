@@ -13,8 +13,12 @@ class CrossoverTransplantSolver:
         """
         self.database = database
 
+        # list of all donors
         self.donors = self.database.get_all_donors()
+        # list of all recipients
         self.recipients = self.database.get_all_recipients()
+
+        # list of all donor-recipient-pairs
         self.pairs = [ 
             (d, self.database.get_partner_recipient(d)) 
             for d in self.donors
@@ -37,11 +41,13 @@ class CrossoverTransplantSolver:
         model = CpModel()
         n = len(self.pairs)
 
+        # precompute compatible recipients for evry donor by id
         donor_to_compatible_recipient = {
             donor.id: set(self.database.get_compatible_recipients(donor))
             for donor, _ in self.pairs
         }
 
+        # decision variables x representing which donor i donates to recipient j
         x = {}
         for i, (d_i, _) in enumerate(self.pairs):
             compatible_recipients = donor_to_compatible_recipient[d_i.id]
@@ -49,25 +55,32 @@ class CrossoverTransplantSolver:
                 if i != j and r_j in compatible_recipients :
                     x[i, j] = model.new_bool_var(f"x_{i}_{j}")
 
+        # because recipients can be duplicates we only need the unique recipients
         unique_recipients = list({recipient for _, recipient in self.pairs})
+        # map recipients to its donor-recipients-pairs
         recipients_to_pairs = {
             recipient: [i for i, (_, r_i) in enumerate(self.pairs) if r_i.id == recipient.id] for recipient in unique_recipients
         }
 
+        # precompute outgoing donations for all donors i
         donor_outgoing = {
             i: [x[i, j] for j in range(n) if (i, j) in x] for i in range(n)
         }
+        # precompute incoming donations for all recipients j
         recipient_incoming = {
             j: [x[i, j] for i in range(n) if (i, j) in x] for j in range(n)
         }
 
         for i in range(n):
             if donor_outgoing[i]:
+                # 1. A donor can donate only once.
                 model.add_at_most_one(donor_outgoing[i])
 
             if donor_outgoing[i] or recipient_incoming[i]:
-                model.add(sum(donor_outgoing[i]) <= sum(recipient_incoming[i]))
+                # 3. A donor is willing to donate only if their associated recipient receives an organ in exchange.
+                model.add(sum(donor_outgoing[i]) == sum(recipient_incoming[i]))
 
+        # 4. If a recipient has multiple willing donors, only one of them is willing to donate in the final solution.
         for r in unique_recipients:
             bool_vars_recipient = [
                 x[i, j]
@@ -77,8 +90,10 @@ class CrossoverTransplantSolver:
             ]
 
             if bool_vars_recipient:
-                model.add_at_most_one(bool_vars_recipient)
+                # 2. A recipient can receive only one organ.
+                model.add_at_most_one(bool_vars_recipient) 
 
+        # maximize number of transplantations
         model.maximize(sum(x[i, j] for (i, j) in x))
 
         status = self.solver.solve(model)
