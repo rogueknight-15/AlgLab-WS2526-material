@@ -38,6 +38,21 @@ class CrossoverTransplantSolver:
         if timelimit < math.inf:
             self.solver.parameters.max_time_in_seconds = timelimit
 
+        """
+        Mathematical Model:
+        maximize sum(x_(i,j)) for all i and j
+        s.t.
+            1. sum(x_(i, j)) <= 1 for all i
+            2. sum(x_(i, j)) <= 1 for all j
+            3. sum(x_(i, j)) == sum(x_(k, i)) for all i
+            4. only one donor is willing to give its organ if there are multiple
+        x_(i, j) ∈ {0, 1}
+        i, j, k ∈ N
+
+        3. means that if a donor donates their associated recipient receives an organ too
+        4. is implemented with only considering unique recipients in the final solution
+        """
+
         model = CpModel()
         n = len(self.pairs)
 
