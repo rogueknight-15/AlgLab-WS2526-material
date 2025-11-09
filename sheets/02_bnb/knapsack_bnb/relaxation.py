@@ -102,12 +102,45 @@ class MyRelaxationSolver(RelaxationSolver):
     def solve(
         self, instance: Instance, decisions: BranchingDecisions
     ) -> RelaxedSolution:
-        # placeholder: behave like NaiveRelaxationSolver
-        used = sum(item.weight for item, x in zip(instance.items, decisions) if x == 1)
-        if used > instance.capacity:
+        total_value = 0
+        total_weight = 0.0
+
+        selection = [0.0] * len(instance.items)
+
+        # copy selection from pre selected items in decision
+        for i, (item, x) in enumerate(zip(instance.items, decisions)):
+            if x == 1.0:
+                selection[i] = 1.0
+                total_weight += item.weight
+                total_value += item.value
+
+        remaining_capacity = instance.capacity - total_weight
+        # early return if selection is ot feasable
+        if remaining_capacity <= 0:
             return RelaxedSolution.create_infeasible(instance)
-        selection = [0.0 if x == 0 else 1.0 for x in decisions]
-        upper = sum(item.value * sel for item, sel in zip(instance.items, selection))
-        return RelaxedSolution(instance, selection, upper)
+        
+        # get items that are not yet selected
+        unselected = [
+            (item.value / item.weight, item, i)
+            for i, (item, x) in enumerate(zip(instance.items, selection))
+            if x == 0
+        ]
+        # sort by value/weight descending
+        unselected.sort(key=lambda x: x[0], reverse=True)
+
+        # fill until capacity is reached and add fraction of last item
+        for _, item, i in unselected:
+            if total_weight + item.weight <= instance.capacity:
+                selection[i] = 1.0
+                total_weight += item.weight
+                total_value += item.value
+            else:
+                fraction = (instance.capacity - total_weight) / item.weight
+                selection[i] = fraction
+                total_weight += fraction * item.weight
+                total_value += fraction * item.value
+                break
+
+        return RelaxedSolution(instance, selection, total_value)
 
 

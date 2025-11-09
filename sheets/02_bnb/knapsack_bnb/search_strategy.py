@@ -92,6 +92,7 @@ def my_search_order(node: BnBNode) -> Any:
     """
     Example default: constant priority.
     """
-    return 0
+    # best fit first the lower the bound the higher the priority
+    return -node.relaxed_solution.upper_bound
 
 

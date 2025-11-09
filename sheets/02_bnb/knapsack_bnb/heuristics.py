@@ -58,9 +58,9 @@ class MyHeuristic(Heuristics):
     """
 
     def search(self, instance: Instance, relaxed: RelaxedSolution) -> Tuple[HeuristicSolution, ...]:
-        if relaxed.does_obey_capacity_constraint() and relaxed.is_integral():
-            heuristic_sol = HeuristicSolution(instance, relaxed.selection, relaxed.upper_bound)
-            return (heuristic_sol,)
-        return ()
-
-
+        # make relaxed solution an integer rounded solution
+        selection = [1 if x == 1.0 else 0 for x in relaxed.selection]
+        total_value = sum(item.value * sel for item, sel in zip(instance.items, selection))
+        
+        heuristic_sol = HeuristicSolution(instance, selection, total_value)
+        return (heuristic_sol,)
